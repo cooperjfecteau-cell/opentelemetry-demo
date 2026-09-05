@@ -9,6 +9,7 @@ package main
 //go:generate openfeature generate -o flags --package-name flags go
 
 import (
+	"log"
 	"context"
 	"database/sql"
 	"fmt"
@@ -373,6 +374,7 @@ func (p *productCatalog) ListProducts(ctx context.Context, req *pb.Empty) (*pb.L
 
 	products, err := loadProductsFromDB(ctx)
 	if err != nil {
+		log.Printf("ListProducts failed: %v", err)
 		span.SetStatus(otelcodes.Error, err.Error())
 		return nil, status.Errorf(codes.Internal, "failed to load products: %v", err)
 	}
@@ -399,6 +401,7 @@ func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductReque
 
 	found, err := getProductFromDB(ctx, req.Id)
 	if err != nil {
+		log.Printf("GetProduct %s failed: %v", req.Id, err)
 		msg := fmt.Sprintf("Product Not Found: %s", req.Id)
 		span.SetStatus(otelcodes.Error, msg)
 		span.AddEvent(msg)
