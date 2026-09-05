@@ -58,3 +58,8 @@ src/frontend/cypress/screenshots
 src/shipping/target/
 
 !src/currency/build
+
+# Workshop: ship the Bluebox skills so every Codespace has them
+!.claude/
+.claude/*
+!.claude/skills/
