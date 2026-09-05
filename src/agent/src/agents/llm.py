@@ -10,6 +10,26 @@ from langchain_openai import ChatOpenAI
 from src.agents.patch_vcr import VCR
 
 
+def build_chat_model():
+    """Select the chat model from LLM_PROVIDER.
+
+    'bedrock' authenticates with the pod's AWS identity (EKS Pod Identity), so no
+    API key is stored anywhere in the cluster. Anything else keeps the upstream
+    OpenAI-compatible client.
+    """
+    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    if provider == "bedrock":
+        from langchain_aws import ChatBedrockConverse
+
+        return ChatBedrockConverse(
+            model=os.getenv("LLM_MODEL"),
+            region_name=os.getenv("AWS_REGION", "us-east-1"),
+            temperature=float(os.getenv("LLM_TEMPERATURE", "0.2")),
+            max_tokens=int(os.getenv("LLM_MAX_TOKENS", "1024")),
+        )
+    return ChatLLM()
+
+
 class ChatLLM(ChatOpenAI):
     def __init__(self, **kwargs):
         model_name = os.getenv("LLM_MODEL", "default")

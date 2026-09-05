@@ -156,6 +156,15 @@
         "off": false,
         "on": true
       }
+    },
+    "agentGrounding": {
+      "description": "Give the shopping assistant its catalog tools. Turn off to make it answer from memory and invent products.",
+      "state": "ENABLED",
+      "variants": {
+        "on": true,
+        "off": false
+      },
+      "defaultVariant": "on"
     }
   }
 }
