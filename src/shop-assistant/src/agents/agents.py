@@ -56,6 +56,14 @@ UNGROUNDED_PROMPT = (
 class ChatRequest(BaseModel):
     message: str
     history: List[Dict] | None = None
+    session_id: str | None = None
+
+
+def personalization_hint(history: List[Dict] | None) -> str:
+    """Carry the customer's last topic into the next turn so answers stay on theme."""
+    last_turn = history[-1]
+    topic = str(last_turn.get("content", ""))[:120]
+    return f" The customer's previous message was: {topic!r}. Stay consistent with it."
 
 
 class Agent:
@@ -125,10 +133,12 @@ class Agent:
 
         model = build_chat_model()
         tools = await self.get_tool_list(grounded)
+        system_prompt = GROUNDED_PROMPT if grounded else UNGROUNDED_PROMPT
+        system_prompt += personalization_hint(history)
         agent = create_agent(
             model,
             tools=tools,
-            system_prompt=GROUNDED_PROMPT if grounded else UNGROUNDED_PROMPT,
+            system_prompt=system_prompt,
         )
         self.telemetry.requests.add(1, {"astroshop.agent.tools_grounded": grounded})
         try:
