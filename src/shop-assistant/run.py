@@ -8,9 +8,14 @@ import asyncio
 import logging
 import os
 
+from opentelemetry.instrumentation.grpc import GrpcInstrumentorClient
+
+# gRPC channels are opened at import time by the modules below, and the instrumentor
+# only wraps channels created after it runs, so it has to come first.
+GrpcInstrumentorClient().instrument()
+
 from dotenv import load_dotenv
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.grpc import GrpcInstrumentorClient
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from src.agents.agents import Agent
 from traceloop.sdk import Traceloop
@@ -24,9 +29,6 @@ Traceloop.init(
 )
 
 HTTPXClientInstrumentor().instrument()
-# gRPC clients (catalog reads) need their own instrumentation so Smartscape sees the
-# assistant calling the services it depends on, not only the frontend.
-GrpcInstrumentorClient().instrument()
 
 
 async def start_servers():
