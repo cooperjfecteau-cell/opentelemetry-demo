@@ -142,8 +142,26 @@ class Agent:
             log.exception("agent run failed for prompt %r", input_prompt)
             raise HTTPException(status_code=500, detail=str(e)) from e
 
+        failed_tool = self._failed_tool(result)
+        if failed_tool:
+            # A tool that could not reach the shop is a failed request, not an answer.
+            # Surfacing it as an error keeps the assistant in the blast radius of an
+            # outage instead of quietly improvising around it.
+            log.error("tool failure: %s", failed_tool)
+            raise HTTPException(status_code=502, detail=f"shop backend unavailable: {failed_tool}")
+
         await self._record_groundedness(span, self._final_text(result), grounded)
         return {"response": result}
+
+    @staticmethod
+    def _failed_tool(result) -> str | None:
+        messages = result.get("messages") if isinstance(result, dict) else None
+        for m in messages or []:
+            if getattr(m, "type", "") == "tool":
+                content = m.content if isinstance(m.content, str) else str(m.content)
+                if content.startswith("Error"):
+                    return f"{getattr(m, 'name', 'tool')}: {content[:200]}"
+        return None
 
     async def _record_groundedness(self, span, answer: str, grounded: bool):
         value, matched = await grounding.score(answer)
