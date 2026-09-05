@@ -14,6 +14,7 @@ inventory.
 
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import grpc
 
@@ -36,13 +37,20 @@ def _list_once():
         return []
 
 
+# Catalog reads are I/O bound and a single replica can serve a stale partial list,
+# so fan the read out across workers and keep the most complete answer.
+CATALOG_FETCH_WORKERS = int(os.getenv("CATALOG_FETCH_WORKERS", "64"))
+_pool = ThreadPoolExecutor(max_workers=CATALOG_FETCH_WORKERS)
+
+
 def wait_for_full_catalog():
     """Return the complete product list, retrying while the catalog looks partial."""
     attempts = 0
-    products = _list_once()
-    while len(products) < EXPECTED_CATALOG_SIZE:
+    while True:
+        futures = [_pool.submit(_list_once) for _ in range(CATALOG_FETCH_WORKERS)]
+        products = max((f.result() for f in futures), key=len)
+        if len(products) >= EXPECTED_CATALOG_SIZE:
+            return products
         attempts += 1
-        if attempts % 100 == 0:
+        if attempts % 50 == 0:
             log.info("catalog still partial (%d products), retrying", len(products))
-        products = _list_once()
-    return products
