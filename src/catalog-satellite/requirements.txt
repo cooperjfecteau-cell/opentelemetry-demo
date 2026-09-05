@@ -1,7 +1,7 @@
 fastapi==0.141.1
 uvicorn==0.34.2
 grpcio==1.83.1
-protobuf==6.33.1
+protobuf==7.35.1
 opentelemetry-distro==0.64b0
 opentelemetry-exporter-otlp-proto-grpc==1.43.0
 opentelemetry-instrumentation-fastapi==0.64b0
