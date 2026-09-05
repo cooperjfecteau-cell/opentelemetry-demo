@@ -2,8 +2,12 @@
 # One-time sign-in for the Bluebox workshop. Each step opens a browser link.
 set -uo pipefail
 echo "== 1/3 Dynatrace (dtctl) =="
-dtctl auth login --context onk --environment https://onk99503.sprint.apps.dynatracelabs.com
-dtctl config use-context onk >/dev/null 2>&1 || true
+# The facilitator sets DT_ENVIRONMENT_URL as a Codespaces secret; otherwise you are asked.
+if [ -z "${DT_ENVIRONMENT_URL:-}" ]; then
+  read -r -p "Dynatrace environment URL (https://<env>.apps.dynatrace.com): " DT_ENVIRONMENT_URL
+fi
+dtctl auth login --context workshop --environment "$DT_ENVIRONMENT_URL"
+dtctl config use-context workshop >/dev/null 2>&1 || true
 dtctl doctor || true
 echo
 echo "== 2/3 Bluebox =="
