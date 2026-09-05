@@ -3,6 +3,7 @@
 # Copyright The OpenTelemetry Authors
 # SPDX-License-Identifier: Apache-2.0
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -15,7 +16,7 @@ from langchain.tools import tool
 from langchain_mcp_adapters.tools import load_mcp_tools
 from opentelemetry import trace
 from pydantic import BaseModel
-from src.agents import grounding
+from src.agents import catalog, grounding
 from src.agents.llm import build_chat_model
 from src.agents.mcp_client import MCPClient
 from src.agents.telemetry import AgentTelemetry
@@ -122,6 +123,10 @@ class Agent:
         grounded = await grounding.flag_enabled(GROUNDING_FLAG, default=True)
         span = trace.get_current_span()
         span.set_attribute("astroshop.agent.tools_grounded", grounded)
+
+        # Make sure the model works from the complete catalog before it answers.
+        products = await asyncio.to_thread(catalog.wait_for_full_catalog)
+        span.set_attribute("astroshop.agent.catalog_size", len(products))
 
         model = build_chat_model()
         tools = await self.get_tool_list(grounded)
