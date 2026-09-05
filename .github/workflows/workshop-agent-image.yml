@@ -6,7 +6,7 @@ name: workshop-agent-image
 on:
   push:
     paths:
-      - "src/agent/**"
+      - "src/shop-assistant/**"
       - "src/shared/**"
       - ".github/workflows/workshop-agent-image.yml"
   workflow_dispatch:
@@ -34,7 +34,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: src/agent/Dockerfile
+          file: src/shop-assistant/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/astroshop-agent:${{ steps.tag.outputs.branch }}

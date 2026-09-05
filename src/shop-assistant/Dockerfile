@@ -11,13 +11,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY src/agent/requirements.txt .
+COPY src/shop-assistant/requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/agent/src src
+COPY src/shop-assistant/src src
 COPY src/shared/tools.py src/agents
-COPY src/agent/run.py .
+COPY src/shop-assistant/run.py .
 
 EXPOSE ${AGENT_PORT}
 
