@@ -155,12 +155,14 @@ class Agent:
 
     @staticmethod
     def _failed_tool(result) -> str | None:
+        """A catalog tool that could not reach the shop. Cart and checkout tools carry
+        expected business errors (empty cart, bad card), so only catalog reads count."""
         messages = result.get("messages") if isinstance(result, dict) else None
         for m in messages or []:
-            if getattr(m, "type", "") == "tool":
+            if getattr(m, "type", "") == "tool" and getattr(m, "name", "") in CATALOG_TOOLS:
                 content = m.content if isinstance(m.content, str) else str(m.content)
                 if content.startswith("Error"):
-                    return f"{getattr(m, 'name', 'tool')}: {content[:200]}"
+                    return f"{m.name}: {content[:200]}"
         return None
 
     async def _record_groundedness(self, span, answer: str, grounded: bool):
