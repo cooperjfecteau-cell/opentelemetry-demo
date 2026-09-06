@@ -56,3 +56,40 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}:${{ steps.tag.outputs.sha }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+      # Pipeline observability: tell Dynatrace which image was built from which commit, so the
+      # SDLC timeline shows the SKU commit next to the deployment and the problem. Skipped
+      # until the repository has the DT_SDLC_TOKEN secret (platform token, scope
+      # openpipeline:events.sdlc:ingest) and the DT_ENVIRONMENT variable (the apps host URL).
+      - name: Report build to Dynatrace (SDLC event)
+        if: ${{ env.DT_SDLC_TOKEN != '' && env.DT_ENVIRONMENT != '' }}
+        env:
+          DT_SDLC_TOKEN: ${{ secrets.DT_SDLC_TOKEN }}
+          DT_ENVIRONMENT: ${{ vars.DT_ENVIRONMENT }}
+          IMAGE: ${{ matrix.name }}
+          TAG: ${{ steps.tag.outputs.branch }}
+          SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          service="${IMAGE#astroshop-}"; [ "$service" = agent ] && service=shop-assistant
+          title=$(printf '%s' "$COMMIT_MSG" | head -n 1)
+          payload=$(jq -n --arg image "$IMAGE" --arg tag "$TAG" --arg sha "$SHA" --arg branch "$BRANCH" \
+            --arg run "$RUN_ID" --arg repo "$REPO" --arg msg "$title" --arg service "$service" \
+            --arg url "https://github.com/$REPO/actions/runs/$RUN_ID" \
+            --arg commit_url "https://github.com/$REPO/commit/$SHA" '{
+              "event.provider": "github.com", "event.type": "build", "event.category": "task",
+              "event.status": "finished", "task.name": ("build " + $image), "task.id": ($run + "-" + $image),
+              "task.outcome": "Success",
+              "cicd.pipeline.name": "workshop-images", "cicd.pipeline.run.id": $run, "cicd.pipeline.run.url.full": $url,
+              "vcs.repository.name": $repo, "vcs.repository.url.full": ("https://github.com/" + $repo),
+              "vcs.ref.head.name": $branch, "vcs.ref.head.revision": $sha,
+              "vcs.change.title": $msg, "vcs.change.url.full": $commit_url,
+              "artifact.name": ("ghcr.io/" + ($repo | split("/")[0]) + "/" + $image), "artifact.version": $tag,
+              "service.name": $service, "k8s.namespace.name": "astroshop", "workshop": "astroshop"
+            }')
+          code=$(curl -s -o /tmp/sdlc.out -w '%{http_code}' -X POST "$DT_ENVIRONMENT/platform/ingest/v1/events/sdlc" \
+            -H "Authorization: Bearer $DT_SDLC_TOKEN" -H "Content-Type: application/json" -d "$payload")
+          echo "SDLC event for $IMAGE:$TAG -> HTTP $code"; cat /tmp/sdlc.out; echo
+          [ "$code" = 202 ] || echo "::warning::Dynatrace SDLC event not accepted (HTTP $code)"
