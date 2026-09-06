@@ -165,6 +165,15 @@
         "off": false
       },
       "defaultVariant": "on"
+    },
+    "loadGeneratorTraffic": {
+      "description": "Enable synthetic traffic from the load generator. The k6 image (3.0.0) polls this flag from every scenario iteration and sleeps while it is off or missing.",
+      "state": "ENABLED",
+      "variants": {
+        "off": 0,
+        "on": 1
+      },
+      "defaultVariant": "on"
     }
   }
 }
