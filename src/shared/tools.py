@@ -86,7 +86,18 @@ async def list_products():
 
 
 async def get_product(product_id: str):
-    """Get detailed information about a product using its ID."""
+    """Get detailed information about a product using its ID. IDs come from list_products;
+    a made-up ID is answered with the list of valid ones."""
+    # The model regularly invents ids ("refractor_telescope_1"); the shop answers those with a
+    # 500, which would count as a catalog outage. Check the id against the catalog first, so
+    # only a shop that cannot answer at all is reported as an error.
+    catalog = await list_products()
+    if isinstance(catalog, str):
+        return f"Error while fetching product {product_id}: {catalog}"
+    known = {p.get("id") for p in catalog if isinstance(p, dict)}
+    if product_id not in known:
+        names = ", ".join(f"{p['id']} ({p.get('name')})" for p in catalog if isinstance(p, dict))[:1500]
+        return f"No product has the id '{product_id}'. Valid ids: {names}"
     url = f"http://{BASE_URL}/api/products/{product_id}"
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
