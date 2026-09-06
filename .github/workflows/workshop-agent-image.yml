@@ -59,7 +59,9 @@ jobs:
       # Pipeline observability: tell Dynatrace which image was built from which commit, so the
       # SDLC timeline shows the SKU commit next to the deployment and the problem. Skipped
       # until the repository has the DT_SDLC_TOKEN secret (platform token, scope
-      # openpipeline:events.sdlc:ingest) and the DT_ENVIRONMENT variable (the apps host URL).
+      # openpipeline:events.sdlc:ingest) and the DT_ENVIRONMENT variable: the classic
+      # environment URL (https://<env>.live.dynatrace.com style, not the .apps. host, which
+      # answers 404 for the ingest paths).
       - name: Report build to Dynatrace (SDLC event)
         if: ${{ env.DT_SDLC_TOKEN != '' && env.DT_ENVIRONMENT != '' }}
         env:
@@ -89,7 +91,7 @@ jobs:
               "artifact.name": ("ghcr.io/" + ($repo | split("/")[0]) + "/" + $image), "artifact.version": $tag,
               "service.name": $service, "k8s.namespace.name": "astroshop", "workshop": "astroshop"
             }')
-          code=$(curl -s -o /tmp/sdlc.out -w '%{http_code}' -X POST "$DT_ENVIRONMENT/platform/ingest/v1/events/sdlc" \
+          code=$(curl -s -o /tmp/sdlc.out -w '%{http_code}' -X POST "$DT_ENVIRONMENT/platform/ingest/v1/events.sdlc" \
             -H "Authorization: Bearer $DT_SDLC_TOKEN" -H "Content-Type: application/json" -d "$payload")
           echo "SDLC event for $IMAGE:$TAG -> HTTP $code"; cat /tmp/sdlc.out; echo
           [ "$code" = 202 ] || echo "::warning::Dynatrace SDLC event not accepted (HTTP $code)"
