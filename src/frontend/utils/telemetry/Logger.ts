@@ -10,6 +10,8 @@ import pino from 'pino';
 const logger = pino({
   level: process.env.LOG_LEVEL || 'info',
   base: { service: 'frontend' },
+  // Level as a word: Dynatrace maps "error" to loglevel ERROR reliably, pino's numeric 50 not always.
+  formatters: { level: (label) => ({ level: label }) },
 });
 
 export default logger;
