@@ -11,6 +11,7 @@ on:
       - "src/product-catalog/**"
       - "src/catalog-satellite/**"
       - "src/frontend/**"
+      - "src/payment/**"
       - ".github/workflows/workshop-agent-image.yml"
   workflow_dispatch:
 
@@ -38,6 +39,11 @@ jobs:
           - name: astroshop-frontend
             context: .
             dockerfile: src/frontend/Dockerfile
+          # Sets enduser.id and demo.payment.charged on the Charge span (upstream does not),
+          # which the purchase business flow's payment step correlates on.
+          - name: astroshop-payment
+            context: .
+            dockerfile: src/payment/Dockerfile
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
