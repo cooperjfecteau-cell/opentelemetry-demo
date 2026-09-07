@@ -10,6 +10,7 @@ on:
       - "src/shared/**"
       - "src/product-catalog/**"
       - "src/catalog-satellite/**"
+      - "src/frontend/**"
       - ".github/workflows/workshop-agent-image.yml"
   workflow_dispatch:
 
@@ -33,6 +34,10 @@ jobs:
           - name: astroshop-catalog-satellite
             context: src/catalog-satellite
             dockerfile: src/catalog-satellite/Dockerfile
+          # The frontend Dockerfile copies from ./src/frontend, so its context is the repo root.
+          - name: astroshop-frontend
+            context: .
+            dockerfile: src/frontend/Dockerfile
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3

@@ -29,6 +29,9 @@ const {
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  // pino must stay an external require so the OpenTelemetry pino instrumentation loaded
+  // by Instrumentation.js can hook it (a bundled copy would log without trace context).
+  serverExternalPackages: ['pino'],
   compiler: {
     styledComponents: true,
   },
