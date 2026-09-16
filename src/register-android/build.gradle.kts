@@ -58,9 +58,11 @@ configure<com.dynatrace.tools.android.dsl.DynatraceExtension> {
             // RegisterApplication.
             sessionReplay.enabled(true)
 
-            // TEMPORARY (bluebox-demo#43 diagnosis): the agent's own enrichment pipeline logs to
-            // logcat under dtxEnrichment why it drops custom properties. Off for the fleet.
-            debug.agentLogging(true)
+            // Turn this on to debug telemetry that does not arrive: the agent logs to logcat
+            // under dtxEnrichment and dtxEventGeneration exactly which properties it drops and
+            // why, which is how the unqualified-key bug in bluebox-demo#49 was found. Left off,
+            // because the fleet runs twelve of these and the log volume is shipped to Dynatrace.
+            // debug.agentLogging(true)
         }
     }
 }
