@@ -45,6 +45,8 @@ generated from a fixed fictional list, never from the checkout's email.
 
 `total` and each item's `price` are plain numbers in `currencyCode`; `price` is
 the line total the checkout service computed, so the item lines sum to `total`.
+The load generator shops in several currencies, so `currencyCode` is not always
+USD and the register has to render it rather than assume dollars.
 Shipping is left out because a collected order is not shipped. An order the
 buffer no longer holds comes back as `status: "unknown"` with HTTP 200;
 collecting one twice returns 409 with the first collection.
