@@ -65,11 +65,12 @@ private fun shuffledKeys(): List<String> {
  * sign_in. Cashier number plus a 4-digit PIN on an on-screen keypad. Any 4-digit PIN is accepted;
  * there is no auth behind it, and the PIN never leaves this screen.
  *
- * Masking: the replay level is Safe, which masks editable fields but leaves labels readable. That
- * is right everywhere else in the app and wrong here, so the cashier-id field and the whole PIN
- * block carry `dtMask` explicitly. Compose has no documented unmask, so anything inside a masked
- * subtree stays masked - which is why the mask is drawn tightly around the keypad and not around
- * the card.
+ * Masking: the replay level is Safe, which masks editable fields but leaves labels readable.
+ * Only the PIN block carries `dtMask`, drawn tightly around the dots and the keypad rather than
+ * around the card, because Compose has no documented unmask and anything inside a masked subtree
+ * stays masked. The cashier id is deliberately visible: it is pseudonymous, it is already a
+ * session property on every event, and a replay you cannot attribute to a cashier is worth less.
+ * Safe masks the editable field anyway, so the value is repeated as a plain label underneath.
  */
 @Composable
 fun SignInScreen(state: RegisterUiState, viewModel: RegisterViewModel) {
@@ -108,14 +109,21 @@ fun SignInScreen(state: RegisterUiState, viewModel: RegisterViewModel) {
                     value = cashierNumber,
                     onValueChange = { cashierNumber = it.filter(Char::isDigit).take(6) },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     textStyle = TextStyle(fontSize = 20.sp),
                     shape = RoundedCornerShape(4.dp),
-                    // Contract: the cashier id is masked in replay even though it is only
-                    // pseudonymous, so a shoulder-surfed replay cannot be tied back to a person.
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .dtMask(),
+                    // Deliberately NOT masked: the cashier id is pseudonymous (cashier-0317), it is
+                    // already a session property on every event, and a replay is far more useful
+                    // when you can see which cashier the shift belongs to. The PIN below stays masked.
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                // Safe masking blacks out editable fields regardless of dtMask, so the value is
+                // repeated as a plain label, which Safe leaves readable. This is what actually
+                // shows the cashier in a replay.
+                Text(
+                    "Signing in as cashier-$cashierNumber",
+                    fontSize = 13.sp,
+                    color = RegisterColors.Muted,
                 )
 
                 Text("PIN", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))

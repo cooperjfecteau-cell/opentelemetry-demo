@@ -57,6 +57,10 @@ configure<com.dynatrace.tools.android.dsl.DynatraceExtension> {
             // costAndTrafficControl) and the runtime withScreenRecordOptedIn(true) in
             // RegisterApplication.
             sessionReplay.enabled(true)
+
+            // TEMPORARY (bluebox-demo#43 diagnosis): the agent's own enrichment pipeline logs to
+            // logcat under dtxEnrichment why it drops custom properties. Off for the fleet.
+            debug.agentLogging(true)
         }
     }
 }

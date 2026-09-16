@@ -8,5 +8,11 @@
         <domain includeSubdomains="true">10.0.2.2</domain>
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">127.0.0.1</domain>
+        <!--
+          The emulator smoke test (bluebox-demo#43) points the register straight at Astro Shop's
+          AWS LoadBalancer, which serves plain HTTP. Without this the frontend-proxy host is
+          unreachable from API 28 on and every lookup fails as a transport error.
+        -->
+        <domain includeSubdomains="true">elb.amazonaws.com</domain>
     </domain-config>
 </network-security-config>
