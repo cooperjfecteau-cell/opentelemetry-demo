@@ -42,7 +42,24 @@ import com.astroshop.register.ui.theme.RegisterColors
 import com.dynatrace.agent.compose.api.dtMask
 
 private const val PIN_LENGTH = 4
-private val KEYS = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "Clear", "0", "⌫")
+private val DIGITS = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
+
+/**
+ * The keypad digits are shuffled for every sign-in, and that is a privacy control, not a gimmick.
+ *
+ * Session Replay masks the PIN field, but it cannot mask taps: the replay shows where a finger
+ * landed. With a fixed 1-9-0 layout, anyone watching a replay can read the PIN straight off the
+ * tap positions, which defeats masking it in the first place. Shuffling per sign-in makes the
+ * positions meaningless to a viewer, which is why real payment keypads do it too.
+ */
+private fun shuffledKeys(): List<String> {
+    val digits = DIGITS.shuffled().toMutableList()
+    // removeAt, not removeLast: the latter compiles to java.util.List.removeLast, which is a
+    // Java 21 method that Android's runtime does not have, and the app dies on the sign-in screen.
+    val zero = digits.removeAt(digits.lastIndex)
+    // Keep the familiar 3x4 shape: nine digits, then Clear / the tenth digit / backspace.
+    return digits + listOf("Clear", zero, "⌫")
+}
 
 /**
  * sign_in. Cashier number plus a 4-digit PIN on an on-screen keypad. Any 4-digit PIN is accepted;
@@ -58,6 +75,8 @@ private val KEYS = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "Clear", 
 fun SignInScreen(state: RegisterUiState, viewModel: RegisterViewModel) {
     var cashierNumber by remember { mutableStateOf(RegisterConfig.get().defaultCashierNumber) }
     var pin by remember { mutableStateOf("") }
+    // Re-shuffled whenever this screen is composed, so each sign-in gets its own layout.
+    val keys = remember { shuffledKeys() }
 
     fun press(key: String) {
         pin = when (key) {
@@ -131,7 +150,7 @@ fun SignInScreen(state: RegisterUiState, viewModel: RegisterViewModel) {
 
                     // A three-column grid built from Rows: LazyVerticalGrid inside a Column needs a
                     // bounded height, and a fixed 4x3 pad does not need laziness.
-                    KEYS.chunked(3).forEach { row ->
+                    keys.chunked(3).forEach { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             row.forEach { key ->
                                 Box(
