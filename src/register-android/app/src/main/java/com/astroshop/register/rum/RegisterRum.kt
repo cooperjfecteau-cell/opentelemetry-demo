@@ -22,9 +22,17 @@ import org.json.JSONObject
  * Taps, OkHttp requests, crashes, ANRs and app starts arrive with no code here. What the agent
  * cannot know is which store and register this is, how a sale ended, and why a lookup failed.
  *
- * The Android agent differs from the React Native plugin the contract was first written against:
- * there is no `endSession()`, and views are never auto-detected for Compose. See [endShiftSession]
- * and [startView].
+ * Two things here are not obvious, and between them they hid every custom property this app sent
+ * (bluebox-demo#49):
+ *  - **Property keys must carry their own namespace.** `addEventProperty` and `addSessionProperty`
+ *    prefix nothing; the agent drops any key that does not already start with `event_properties.`
+ *    or `session_properties.`, silently apart from one `dtxEventGeneration` line. Hence [EVENT] and
+ *    [SESSION] below - never pass a bare key.
+ *  - **An event modifier may only write the namespace the event it modifies already owns.**
+ *    See [addStoreAndRegisterModifier].
+ *
+ * Business events for the register flow live in [RegisterFlow], because they take a different road
+ * out of the agent and land in `bizevents`, not `user.events`.
  */
 object RegisterRum {
 
@@ -34,11 +42,23 @@ object RegisterRum {
     const val VIEW_TENDER = "tender"
     const val VIEW_RECEIPT = "receipt"
 
+    /**
+     * The namespaces the agent demands on every custom property key.
+     *
+     * `EventData.addEventProperty("amount", 21.95)` does **not** become `event_properties.amount`:
+     * the agent compares the key against the namespace and throws the property away when it does
+     * not match, leaving an event carrying nothing but `dt.support.api.has_dropped_properties`.
+     * That is why the register's three custom events reached the tenant with no `event_name` to
+     * recognise them by.
+     */
+    private const val EVENT = "event_properties."
+    private const val SESSION = "session_properties."
+
     private const val EVENT_TRANSACTION_COMPLETE = "transaction_complete"
     private const val EVENT_TRANSACTION_VOID = "transaction_void"
     private const val EVENT_LOOKUP_FAILED = "lookup_failed"
 
-    private const val CURRENCY = "USD"
+    internal const val CURRENCY = "USD"
 
     // The agent re-reads privacy options on every session it opens, so the register keeps the one
     // set of options it ever uses and re-applies it verbatim to force a session boundary.
@@ -80,21 +100,35 @@ object RegisterRum {
      * the automatic ones, so a failed request can be attributed to a store without joining back to
      * the session.
      *
-     * It also re-writes the session properties, which the Android modifier may do and the React
-     * Native one may not. The agent's own idle timeout is shorter than the register's 15-minute
-     * lock, so a quiet shift can split into a second session that never saw sign-in; the modifier
-     * is what keeps store and register on its events either way.
+     * It writes **event properties only**. An earlier version also wrote `session_properties.*`
+     * here, as a hedge against the agent's idle timeout splitting a shift into a session that never
+     * saw sign-in. That hedge never worked: the modifier merge accepts only the namespace the event
+     * being modified already owns, so on every ordinary event the agent logged
+     * `sanitation: key 'session_properties.store_id' is outside of allowed namespace and thus
+     * dropped` and set `dt.support.api.has_dropped_custom_properties` on the event - on *all* 611
+     * of 612 events in a day, which is what made bluebox-demo#49 look like a tenant fault.
+     *
+     * The hedge that does work is re-sending the identity when a sale opens: [applySessionIdentity].
+     *
+     * The same rule cuts the other way, which is why the session-property events are skipped: they
+     * own `session_properties.`, so writing event properties onto them would be dropped in turn and
+     * would put the same support flag back on three events a shift. They already carry store and
+     * register by hand.
      */
     private fun addStoreAndRegisterModifier() {
         Dynatrace.addEventModifier(EventModifier { event: JSONObject ->
-            val config = RegisterConfig.get()
-            event.put("event_properties.store_id", config.storeId)
-            event.put("event_properties.register_id", config.registerId)
-            event.put("session_properties.store_id", config.storeId)
-            event.put("session_properties.register_id", config.registerId)
+            if (!carriesSessionProperties(event)) {
+                val config = RegisterConfig.get()
+                event.put(EVENT + "store_id", config.storeId)
+                event.put(EVENT + "register_id", config.registerId)
+            }
             event
         })
     }
+
+    /** True for the events [applySessionIdentity] sends, which own the `session_properties.` side. */
+    private fun carriesSessionProperties(event: JSONObject): Boolean =
+        event.keys().asSequence().any { it.startsWith(SESSION) }
 
     /**
      * Contract: a Dynatrace session is one cashier shift on one register.
@@ -104,15 +138,25 @@ object RegisterRum {
      */
     fun signIn(cashierId: String) {
         Dynatrace.identifyUser(cashierId)
+        applySessionIdentity(cashierId)
+    }
 
+    /**
+     * The five session properties, which the register may send more than once a shift.
+     *
+     * The agent's own idle timeout is shorter than the register's 15-minute lock, so a quiet shift
+     * can split into a second session that never saw sign-in. Re-sending when a sale opens costs
+     * one event and keeps store, register and cashier on the session either way.
+     */
+    fun applySessionIdentity(cashierId: String) {
         val config = RegisterConfig.get()
         Dynatrace.sendSessionPropertyEvent(
             SessionPropertyEventData()
-                .addSessionProperty("store_id", config.storeId)
-                .addSessionProperty("store_name", config.storeName)
-                .addSessionProperty("store_region", config.storeRegion)
-                .addSessionProperty("register_id", config.registerId)
-                .addSessionProperty("cashier_id", cashierId)
+                .addSessionProperty(SESSION + "store_id", config.storeId)
+                .addSessionProperty(SESSION + "store_name", config.storeName)
+                .addSessionProperty(SESSION + "store_region", config.storeRegion)
+                .addSessionProperty(SESSION + "register_id", config.registerId)
+                .addSessionProperty(SESSION + "cashier_id", cashierId)
         )
     }
 
@@ -126,10 +170,6 @@ object RegisterRum {
      * cashier's shift from inheriting this one's identity.
      *
      * Called at sign-out and at the 15-minute idle lock, the two boundaries the contract names.
-     *
-     * Unverified: no Dynatrace page recommends this for ending a session, and no tenant was
-     * available. The first live run must confirm that a sign-out produces two distinct
-     * `dt.rum.session.id` values.
      */
     fun endShiftSession() {
         // The session's last events would otherwise be dropped when the boundary cuts them off.
@@ -150,26 +190,36 @@ object RegisterRum {
     /**
      * Contract: `transaction_complete`, an outcome event. `EventData` has no name field, so the
      * name travels as `event_name`.
+     *
+     * `transaction_id` is new: it is the join between a cashier's RUM session and the sale's
+     * business events, so a step in the Business Flow can be opened as a session replay.
      */
-    fun transactionComplete(amount: Double, itemCount: Int, orderId: String) {
+    fun transactionComplete(transactionId: String, amount: Double, itemCount: Int, orderId: String) {
         Dynatrace.sendEvent(
             EventData()
-                .addEventProperty("event_name", EVENT_TRANSACTION_COMPLETE)
-                .addEventProperty("amount", amount)
-                .addEventProperty("currency", CURRENCY)
-                .addEventProperty("item_count", itemCount)
-                .addEventProperty("order_id", orderId)
+                .addEventProperty(EVENT + "event_name", EVENT_TRANSACTION_COMPLETE)
+                .addEventProperty(EVENT + "transaction_id", transactionId)
+                .addEventProperty(EVENT + "amount", amount)
+                .addEventProperty(EVENT + "currency", CURRENCY)
+                .addEventProperty(EVENT + "item_count", itemCount)
+                .addEventProperty(EVENT + "order_id", orderId)
         )
     }
 
     /** Contract: `transaction_void`. `reason` is `cashier` or `error`. */
-    fun transactionVoid(reason: String, itemCount: Int, failedLookupCount: Int) {
+    fun transactionVoid(
+        transactionId: String,
+        reason: String,
+        itemCount: Int,
+        failedLookupCount: Int,
+    ) {
         Dynatrace.sendEvent(
             EventData()
-                .addEventProperty("event_name", EVENT_TRANSACTION_VOID)
-                .addEventProperty("void_reason", reason)
-                .addEventProperty("item_count", itemCount)
-                .addEventProperty("failed_lookup_count", failedLookupCount)
+                .addEventProperty(EVENT + "event_name", EVENT_TRANSACTION_VOID)
+                .addEventProperty(EVENT + "transaction_id", transactionId)
+                .addEventProperty(EVENT + "void_reason", reason)
+                .addEventProperty(EVENT + "item_count", itemCount)
+                .addEventProperty(EVENT + "failed_lookup_count", failedLookupCount)
         )
     }
 
@@ -183,10 +233,10 @@ object RegisterRum {
     fun lookupFailed(productId: String, result: String, statusCode: Int) {
         Dynatrace.sendEvent(
             EventData()
-                .addEventProperty("event_name", EVENT_LOOKUP_FAILED)
-                .addEventProperty("product_id", productId)
-                .addEventProperty("result", result)
-                .addEventProperty("status_code", statusCode)
+                .addEventProperty(EVENT + "event_name", EVENT_LOOKUP_FAILED)
+                .addEventProperty(EVENT + "product_id", productId)
+                .addEventProperty(EVENT + "result", result)
+                .addEventProperty(EVENT + "status_code", statusCode)
         )
     }
 }
