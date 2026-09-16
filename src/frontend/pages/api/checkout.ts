@@ -6,9 +6,10 @@ import type { ServiceError } from '@grpc/grpc-js';
 import { context, Exception, SpanStatusCode, trace } from '@opentelemetry/api';
 import InstrumentationMiddleware from '../../utils/telemetry/InstrumentationMiddleware';
 import CheckoutGateway from '../../gateways/rpc/Checkout.gateway';
-import { Empty, PlaceOrderRequest, PlaceOrderResponse } from '../../protos/demo';
+import { Empty, OrderResult, PlaceOrderRequest, PlaceOrderResponse } from '../../protos/demo';
 import { IProductCheckoutItem, IProductCheckout } from '../../types/Cart';
 import ProductCatalogService from '../../services/ProductCatalog.service';
+import OrderPickupService from '../../services/OrderPickup.service';
 
 // Prefix checkout's Go service always uses for chargeCard failures (src/checkout/main.go),
 // the only signal available to tell a payment decline apart from an unrelated internal error.
@@ -60,6 +61,10 @@ const handler = async ({ method, body, query }: NextApiRequest, res: NextApiResp
           };
         })
       );
+
+      // Every checkout - the load generator places them constantly - becomes an order a
+      // register can collect, so buy-online-pickup-in-store runs on real orders.
+      OrderPickupService.record((order as Partial<OrderResult>).orderId ?? '', productList);
 
       return res.status(200).json({ ...order, items: productList });
     }
