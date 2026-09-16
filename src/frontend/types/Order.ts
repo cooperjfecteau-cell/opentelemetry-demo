@@ -13,7 +13,7 @@ export interface IPickupOrderItem {
   productId: string;
   name: string;
   quantity: number;
-  // The line total the checkout service already computed (unit price x quantity), so the
+  // The line total, unit price x quantity - checkout only ever stores the unit price - so
   // item lines sum to `total` and a cashier can read the order back without doing math.
   price: number;
 }

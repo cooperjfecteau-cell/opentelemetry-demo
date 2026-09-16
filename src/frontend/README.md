@@ -44,7 +44,8 @@ the load generator refills the buffer within a minute. Customer names are
 generated from a fixed fictional list, never from the checkout's email.
 
 `total` and each item's `price` are plain numbers in `currencyCode`; `price` is
-the line total the checkout service computed, so the item lines sum to `total`.
+the line total (unit price x quantity - the order only carries the unit price),
+so the item lines sum to `total` and `total` is the order's real value.
 The load generator shops in several currencies, so `currencyCode` is not always
 USD and the register has to render it rather than assume dollars.
 Shipping is left out because a collected order is not shipped. An order the

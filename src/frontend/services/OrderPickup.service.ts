@@ -44,10 +44,15 @@ const orders = new Map<string, IPickupOrder>();
 // fleet has something to collect, however few orders the shop has placed since a restart.
 let nextStore = 0;
 
-/** protos Money -> a number in the same currency, which is all the register displays. */
-function toAmount(money: Money | undefined): number {
+/**
+ * protos Money -> a number in the same currency, which is all the register displays.
+ * `quantity` is here because OrderItem.cost is the *unit* price: checkout multiplies it
+ * out itself when it totals an order (prepOrderItems / MultiplySlow in checkout/main.go),
+ * so a line total has to be multiplied here too. Rounded once, after multiplying.
+ */
+function toAmount(money: Money | undefined, quantity = 1): number {
   if (!money) return 0;
-  return Math.round((money.units + money.nanos / 1e9) * 100) / 100;
+  return Math.round((money.units + money.nanos / 1e9) * quantity * 100) / 100;
 }
 
 /** Stable per order id, so an order keeps its name across polls of /api/orders/ready. */
@@ -72,7 +77,7 @@ const OrderPickupService = () => ({
         productId: item.productId,
         name: item.product.name,
         quantity: item.quantity,
-        price: toAmount(cost),
+        price: toAmount(cost, item.quantity),
       }));
 
       const store = STORES[nextStore % STORES.length];
