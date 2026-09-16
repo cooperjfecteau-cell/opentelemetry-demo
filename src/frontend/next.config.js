@@ -41,6 +41,19 @@ const nextConfig = {
     // Set root to current directory to avoid confusion with parent lockfile
     root: __dirname,
   },
+  experimental: {
+    // Dynatrace Live Debugger maps a breakpoint on a .ts file onto the shipped server
+    // bundle through that bundle's source map. Turbopack already emits server source maps
+    // by default, but this is the key `next build --webpack` reads, so both bundlers agree.
+    // Only the server build is affected: productionBrowserSourceMaps stays off, so no
+    // frontend source is published to shoppers.
+    //
+    // The other half of this lives in package.json: `next build --no-mangling`. Live
+    // Debugger reads local variables by name, and a mangled bundle has no names left to
+    // read. --no-mangling keeps minification (whitespace, dead code) and only stops the
+    // renaming, which is far cheaper than turning the minifier off.
+    serverSourceMaps: true,
+  },
   // Keep webpack config for backwards compatibility if --webpack flag is used
   webpack: (config, { isServer }) => {
     if (!isServer) {

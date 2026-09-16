@@ -17,7 +17,15 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
-    "incremental": true
+    "incremental": true,
+    // The two settings Dynatrace Live Debugger's docs name for TypeScript. They are
+    // inert in this build - noEmit is on and Turbopack transpiles the sources itself,
+    // already emitting maps with sourcesContent - but they keep tsc-based tooling in
+    // agreement, and they are what applies if this project ever emits through tsc.
+    // The map that Live Debugger actually reads is the one the Dockerfile copies into
+    // the standalone output.
+    "sourceMap": true,
+    "inlineSources": true
   },
   "include": [
     "next-env.d.ts",
