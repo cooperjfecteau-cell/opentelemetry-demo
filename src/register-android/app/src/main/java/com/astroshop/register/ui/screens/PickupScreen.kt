@@ -307,9 +307,13 @@ private fun Waiting(message: String) {
     }
 }
 
-/** Enough of an order id to read out loud without filling the row. */
+/**
+ * Enough of an order id to read out loud without filling the row - the **leading** characters, not
+ * the trailing ones. Astro Shop's order ids are version-1 UUIDs, so every order placed on the same
+ * host ends in the same node field: a queue shortened from the right shows five identical ids.
+ */
 private fun shortOrderId(orderId: String?): String =
-    orderId.orEmpty().takeLast(12).ifBlank { "unknown" }
+    orderId.orEmpty().take(8).ifBlank { "unknown" }
 
 /**
  * The API's timestamps are ISO-8601 strings. Rendered as month, day and time, because a counter
