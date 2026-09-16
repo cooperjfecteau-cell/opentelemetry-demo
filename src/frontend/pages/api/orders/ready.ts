@@ -20,8 +20,9 @@ const handler: NextApiHandler<TResponse> = async ({ method, query }, res) => {
 
       const orders = OrderPickupService.listReady(storeId as string);
 
-      // Attribute names match the register's RUM session properties (bluebox-demo#33), so a
-      // pickup can be followed from the cashier's session straight into this span.
+      // Named after the register's RUM session properties (bluebox-demo#33). These ride the
+      // frontend's own OTel span, which the Bindplane gateway drops (bluebox-demo#44), so in
+      // the cluster the pickup is followed through the OneAgent span's endpoint instead.
       const span = trace.getSpan(context.active());
       span?.setAttribute('store.id', storeId as string);
       span?.setAttribute('order.pickup.ready_count', orders.length);

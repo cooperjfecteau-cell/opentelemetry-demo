@@ -23,8 +23,8 @@ const handler: NextApiHandler<TResponse> = async ({ method, query, body }, res) 
       const alreadyCollected = OrderPickupService.get(orderId as string)?.status === 'collected';
       const order = OrderPickupService.collect(orderId as string, registerId, cashierId);
 
-      // The whole point of the pickup beat is a cashier in the middle of an online order,
-      // so the register, the cashier and the store go on the span alongside the order id.
+      // The pickup beat is a cashier in the middle of an online order, so the register, the
+      // cashier and the store go on the span - see the note in ready.ts about where they land.
       const span = trace.getSpan(context.active());
       span?.setAttribute('order.id', orderId as string);
       span?.setAttribute('register.id', registerId);
