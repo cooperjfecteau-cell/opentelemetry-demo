@@ -9,6 +9,7 @@ import com.astroshop.register.data.ApiResult
 import com.astroshop.register.data.Product
 import com.astroshop.register.data.RegisterRepository
 import com.astroshop.register.data.priceUsdAmount
+import com.astroshop.register.rum.RegisterFlow
 import com.astroshop.register.rum.RegisterRum
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -91,6 +92,14 @@ class RegisterViewModel(
     /** Failed lookups in the open transaction, for `transaction_void`'s `failed_lookup_count`. */
     private var failedLookupsInTransaction = 0
 
+    /**
+     * The correlation key of the sale currently on the screen, and the case id of the register
+     * Business Flow (bluebox-demo#49). A sale gets one at the moment the register opens it - at
+     * sign-in for a shift's first sale, then on every "New sale" or void - so that every case in
+     * the flow starts at step one and conversion means "sales that took money".
+     */
+    private var transactionId: String = newTransactionId()
+
     @Volatile
     private var lastActivityMillis = System.currentTimeMillis()
 
@@ -124,6 +133,7 @@ class RegisterViewModel(
         markActivity()
         _state.value = RegisterUiState(screen = Screen.SALE, cashier = cashierId)
         RegisterRum.startView(Screen.SALE.viewName)
+        openSale(cashierId, RegisterFlow.OPENED_BY_SIGN_IN)
     }
 
     fun signOut() {
@@ -190,11 +200,22 @@ class RegisterViewModel(
                             )
                         }
 
-                        is ApiResult.Ok -> _state.update {
-                            it.copy(
-                                basket = addLine(it.basket, product, 1),
-                                lookup = LookupState.Added(product.name.orEmpty()),
-                                lookupFailures = 0,
+                        is ApiResult.Ok -> {
+                            _state.update {
+                                it.copy(
+                                    basket = addLine(it.basket, product, 1),
+                                    lookup = LookupState.Added(product.name.orEmpty()),
+                                    lookupFailures = 0,
+                                )
+                            }
+                            // Step two of the flow, and the only one that repeats.
+                            RegisterFlow.itemAdded(
+                                transactionId,
+                                _state.value.cashier.orEmpty(),
+                                product.id!!,
+                                product.name.orEmpty(),
+                                product.priceUsdAmount(),
+                                _state.value.itemCount,
                             )
                         }
                     }
@@ -231,6 +252,9 @@ class RegisterViewModel(
             voidTransactionInternal(reason)
             _state.update { it.copy(screen = Screen.SALE, lookup = LookupState.Idle) }
             RegisterRum.startView(Screen.SALE.viewName)
+            // A void ends that case. The register is still open for business, so the next sale
+            // starts here rather than waiting for an item to be scanned into a closed case.
+            _state.value.cashier?.let { openSale(it, RegisterFlow.OPENED_BY_NEW_SALE) }
         }
     }
 
@@ -238,7 +262,14 @@ class RegisterViewModel(
         val snapshot = _state.value
         if (!snapshot.transactionOpen) return
         if (snapshot.basket.isNotEmpty()) repository.emptyCart()
-        RegisterRum.transactionVoid(reason, snapshot.itemCount, failedLookupsInTransaction)
+        RegisterRum.transactionVoid(transactionId, reason, snapshot.itemCount, failedLookupsInTransaction)
+        RegisterFlow.saleVoided(
+            transactionId,
+            snapshot.cashier.orEmpty(),
+            reason,
+            snapshot.itemCount,
+            failedLookupsInTransaction,
+        )
         failedLookupsInTransaction = 0
         _state.update {
             it.copy(basket = emptyList(), transactionOpen = false, lookupFailures = 0, chargeFailedStatus = null)
@@ -261,6 +292,21 @@ class RegisterViewModel(
         markActivity()
         _state.update { it.copy(screen = Screen.SALE, lastReceipt = null, lookup = LookupState.Idle) }
         RegisterRum.startView(Screen.SALE.viewName)
+        _state.value.cashier?.let { openSale(it, RegisterFlow.OPENED_BY_NEW_SALE) }
+    }
+
+    /**
+     * Opens the next sale: a fresh correlation key, step one of the flow, and the shift identity
+     * re-applied.
+     *
+     * The identity is re-sent here rather than only at sign-in because the agent's idle timeout is
+     * shorter than the register's 15-minute lock, so a quiet shift can split into a session that
+     * never saw the sign-in (see RegisterRum.applySessionIdentity).
+     */
+    private fun openSale(cashierId: String, openedBy: String) {
+        transactionId = newTransactionId()
+        RegisterRum.applySessionIdentity(cashierId)
+        RegisterFlow.saleOpened(transactionId, cashierId, openedBy)
     }
 
     fun tender(type: TenderType, tendered: Double) {
@@ -270,6 +316,17 @@ class RegisterViewModel(
             val total = snapshot.total
             val itemCount = snapshot.itemCount
             _state.update { it.copy(charging = true, chargeFailedStatus = null) }
+
+            // Step three, before checkout runs, so that a checkout Astro Shop refuses shows up as a
+            // drop-off between tender and completion rather than never reaching the flow at all.
+            val tenderName = type.name.lowercase(Locale.US)
+            RegisterFlow.tenderStarted(
+                transactionId,
+                snapshot.cashier.orEmpty(),
+                tenderName,
+                total,
+                itemCount,
+            )
 
             val orderId = when (val order = repository.checkout()) {
                 is ApiResult.Failed -> {
@@ -285,7 +342,16 @@ class RegisterViewModel(
                 return@launch
             }
 
-            RegisterRum.transactionComplete(total, itemCount, orderId)
+            RegisterRum.transactionComplete(transactionId, total, itemCount, orderId)
+            // Step four: the converting step, and the one that carries the money.
+            RegisterFlow.saleCompleted(
+                transactionId,
+                snapshot.cashier.orEmpty(),
+                total,
+                itemCount,
+                tenderName,
+                orderId,
+            )
             failedLookupsInTransaction = 0
             _state.update {
                 it.copy(
@@ -329,6 +395,9 @@ class RegisterViewModel(
     }
 
     private companion object {
+        /** Opaque, client-side, and unique per sale: the Business Flow's case id. */
+        fun newTransactionId(): String = UUID.randomUUID().toString().replace("-", "")
+
         const val IDLE_TIMEOUT_MS = 15L * 60 * 1000
         // The check only has to land within a sweep of the 15-minute mark.
         const val IDLE_CHECK_INTERVAL_MS = 15_000L
