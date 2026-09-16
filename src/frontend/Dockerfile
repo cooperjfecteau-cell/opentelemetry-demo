@@ -29,12 +29,6 @@ COPY ./src/frontend/tsconfig.json tsconfig.json
 
 RUN npm run build
 
-# Turbopack writes a .js.map next to every server chunk, but `output: standalone` only
-# traces the .js files, so the maps are left behind in .next/server and never reach the
-# image. Dynatrace Live Debugger needs the map sitting next to the chunk it loaded to
-# resolve a breakpoint back to the .ts file, so put them into the standalone tree.
-RUN find .next/server -name '*.js.map' -exec cp --parents {} .next/standalone/ \;
-
 # -----------------------------------------------------------------------------
 
 FROM docker.io/library/node:25.9.0-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS deps

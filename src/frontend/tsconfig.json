@@ -19,11 +19,9 @@
     "jsx": "react-jsx",
     "incremental": true,
     // The two settings Dynatrace Live Debugger's docs name for TypeScript. They are
-    // inert in this build - noEmit is on and Turbopack transpiles the sources itself,
-    // already emitting maps with sourcesContent - but they keep tsc-based tooling in
-    // agreement, and they are what applies if this project ever emits through tsc.
-    // The map that Live Debugger actually reads is the one the Dockerfile copies into
-    // the standalone output.
+    // inert here - noEmit is on and Next transpiles with SWC, which already emits the
+    // server map with sourcesContent embedded - but they keep tsc-based tooling in
+    // agreement and are what would apply if this project ever emitted through tsc.
     "sourceMap": true,
     "inlineSources": true
   },

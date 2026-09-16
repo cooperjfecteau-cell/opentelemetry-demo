@@ -41,20 +41,24 @@ const nextConfig = {
     // Set root to current directory to avoid confusion with parent lockfile
     root: __dirname,
   },
+  // Dynatrace Live Debugger reaches a breakpoint on pages/api/*.ts through the server
+  // bundle's source map, and reads locals by name off the frame V8 stopped on. Both of
+  // these are about the *server* build only: productionBrowserSourceMaps stays off, so
+  // no frontend source is published to shoppers.
+  //
+  // These are webpack keys, which is why package.json builds with `--webpack`. Turbopack
+  // does emit server maps and honours serverSourceMaps, but its build output is one
+  // minified line per chunk and V8's getPossibleBreakpoints finds no location inside it,
+  // so every breakpoint comes back LiveDebuggerInvalidBreakpointLocation. There is no
+  // server-only minify switch under Turbopack (experimental.turbopackMinify covers the
+  // browser bundle too), so webpack is the cheaper of the two. See bluebox-demo#48.
   experimental: {
-    // Dynatrace Live Debugger maps a breakpoint on a .ts file onto the shipped server
-    // bundle through that bundle's source map. Turbopack already emits server source maps
-    // by default, but this is the key `next build --webpack` reads, so both bundlers agree.
-    // Only the server build is affected: productionBrowserSourceMaps stays off, so no
-    // frontend source is published to shoppers.
-    //
-    // The other half of this lives in package.json: `next build --no-mangling`. Live
-    // Debugger reads local variables by name, and a mangled bundle has no names left to
-    // read. --no-mangling keeps minification (whitespace, dead code) and only stops the
-    // renaming, which is far cheaper than turning the minifier off.
     serverSourceMaps: true,
+    // Unminified server code keeps one statement per line, which is what V8 needs to
+    // place the breakpoint, and it leaves identifiers alone so locals still have names.
+    serverMinification: false,
   },
-  // Keep webpack config for backwards compatibility if --webpack flag is used
+  // Used by `next build --webpack`, which is how this app is built.
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback.http2 = false;
