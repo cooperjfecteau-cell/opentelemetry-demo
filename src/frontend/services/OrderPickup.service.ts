@@ -54,7 +54,7 @@ function toAmount(money: Money | undefined): number {
 function fictionalName(orderId: string): string {
   let hash = 0;
   for (const char of orderId) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return `${FIRST_NAMES[hash % FIRST_NAMES.length]} ${LAST_NAMES[(hash >> 8) % LAST_NAMES.length]}`;
+  return `${FIRST_NAMES[hash % FIRST_NAMES.length]} ${LAST_NAMES[(hash >>> 8) % LAST_NAMES.length]}`;
 }
 
 const OrderPickupService = () => ({
