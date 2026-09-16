@@ -54,3 +54,50 @@ data class CheckoutResponse(val orderId: String? = null)
 /** The price a product line is rung up at. */
 fun Product.priceUsdAmount(): Double =
     (priceUsd?.units ?: 0L).toDouble() + (priceUsd?.nanos ?: 0) / 1_000_000_000.0
+
+/**
+ * Buy-online-pick-up-in-store, as the order-pickup API defines it (bluebox-demo#50):
+ *
+ * ```
+ * GET  /api/orders/ready?storeId=0142
+ * GET  /api/orders/{orderId}
+ * POST /api/orders/{orderId}/collect   { registerId, cashierId }
+ * ```
+ *
+ * Nullable throughout for the same reason as [Product]: the register renders whatever arrived and
+ * never crashes the counter over a field the shop left out. `customerName` is the only field here
+ * that looks like personal data, and it is not - the orders are synthetic and the names are
+ * obviously invented (see StubPickupSource), so nothing on the pickup screen needs `dtMask`.
+ */
+data class PickupItem(
+    val productId: String? = null,
+    val name: String? = null,
+    val quantity: Int? = null,
+    /** Unit price, in the order's currency. The order's own `total` is the authoritative sum. */
+    val price: Double? = null,
+)
+
+data class PickupOrder(
+    val orderId: String? = null,
+    val placedAt: String? = null,
+    val storeId: String? = null,
+    /** Only the single-order route sets this: `ready`, `collected` or `unknown`. */
+    val status: String? = null,
+    val customerName: String? = null,
+    val itemCount: Int? = null,
+    val total: Double? = null,
+    val items: List<PickupItem>? = null,
+)
+
+data class ReadyOrdersResponse(val orders: List<PickupOrder>? = null)
+
+data class CollectRequest(val registerId: String, val cashierId: String)
+
+data class CollectResponse(
+    val orderId: String? = null,
+    val status: String? = null,
+    val collectedAt: String? = null,
+)
+
+/** The shop's own item count when it sent one, and the lines' quantities when it did not. */
+fun PickupOrder.countedItems(): Int = itemCount ?: items?.sumOf { it.quantity ?: 0 } ?: 0

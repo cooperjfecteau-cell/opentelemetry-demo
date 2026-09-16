@@ -139,7 +139,30 @@ private fun ColumnScope.LookupPane(
     val loading = state.lookup is LookupState.Loading
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Scan or enter product id", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        // The two counter tasks that are not a sale (bluebox-demo#51). Both open from here and
+        // come back here, leaving the basket exactly as it was.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "Scan or enter product id",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+            )
+            RegisterButton(
+                label = "Order pickup",
+                variant = RegisterButtonVariant.SECONDARY,
+                onClick = viewModel::openPickup,
+            )
+            RegisterButton(
+                label = "Ask",
+                variant = RegisterButtonVariant.SECONDARY,
+                onClick = viewModel::openAssistant,
+            )
+        }
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(

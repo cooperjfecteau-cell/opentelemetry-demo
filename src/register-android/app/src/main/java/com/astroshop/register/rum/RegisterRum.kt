@@ -42,6 +42,10 @@ object RegisterRum {
     const val VIEW_TENDER = "tender"
     const val VIEW_RECEIPT = "receipt"
 
+    /** The two counter tasks that are not a sale (bluebox-demo#51). */
+    const val VIEW_PICKUP = "pickup"
+    const val VIEW_ASSISTANT = "assistant"
+
     /**
      * The namespaces the agent demands on every custom property key.
      *

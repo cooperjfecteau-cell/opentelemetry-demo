@@ -12,6 +12,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.astroshop.register.ui.screens.AssistantScreen
+import com.astroshop.register.ui.screens.PickupScreen
 import com.astroshop.register.ui.screens.ReceiptScreen
 import com.astroshop.register.ui.screens.SaleScreen
 import com.astroshop.register.ui.screens.SignInScreen
@@ -20,8 +22,9 @@ import com.astroshop.register.ui.theme.AstroShopRegisterTheme
 import com.astroshop.register.ui.theme.RegisterColors
 
 /**
- * Four screens and no back stack: a register only ever moves forwards, and a sign-out returns it to
- * the start. Screen changes drive `Dynatrace.startView()` from the view model, because automatic
+ * Six screens and no back stack: a register only ever moves forwards, and a sign-out returns it to
+ * the start. Order pickup and the assistant hang off the sale rather than following it, and both
+ * return to it with the basket untouched. Screen changes drive `Dynatrace.startView()` from the view model, because automatic
  * view detection covers Activities only and would report this whole app as one view.
  */
 @Composable
@@ -51,6 +54,8 @@ fun RegisterApp(viewModel: RegisterViewModel = viewModel()) {
                 Screen.SALE -> SaleScreen(state, viewModel)
                 Screen.TENDER -> TenderScreen(state, viewModel)
                 Screen.RECEIPT -> ReceiptScreen(state, viewModel)
+                Screen.PICKUP -> PickupScreen(state, viewModel)
+                Screen.ASSISTANT -> AssistantScreen(state, viewModel)
             }
         }
     }

@@ -35,6 +35,12 @@ android {
         buildConfigField("String", "DEFAULT_REGISTER_ID", "\"${provisioning("REGISTER_ID", "0142-03")}\"")
         buildConfigField("String", "DEFAULT_CASHIER_NUMBER", "\"${provisioning("CASHIER_NUMBER", "0317")}\"")
 
+        // The order-pickup API (bluebox-demo#50) was still being built when the pickup screen was.
+        // `PICKUP_STUB=true` (or -Ppickup.stub=true) serves that screen from an in-memory stand-in
+        // instead, which is how it was developed and driven. False by default, so every build that
+        // does not ask for the stub calls the real shop.
+        buildConfigField("boolean", "PICKUP_STUB", provisioning("PICKUP_STUB", "false"))
+
         // The checkout identity. It reaches Astro Shop's checkout and nothing else: it is never put
         // on a log, a span, or a Dynatrace event (bluebox-demo#18, #33).
         buildConfigField("String", "STORE_EMAIL", "\"${provisioning("STORE_EMAIL", "store-0142@astroshop.example")}\"")

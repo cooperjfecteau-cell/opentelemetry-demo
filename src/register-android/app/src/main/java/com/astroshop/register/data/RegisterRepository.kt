@@ -18,6 +18,20 @@ sealed interface ApiResult<out T> {
 }
 
 /**
+ * Runs one Astro Shop call and flattens it into an [ApiResult]. Top level so that every caller in
+ * this package - the sale's routes and the pickup source alike - fails the same way.
+ */
+internal suspend fun <T> apiCall(block: suspend () -> Response<T>): ApiResult<T?> =
+    try {
+        val response = block()
+        if (response.isSuccessful) ApiResult.Ok(response.body()) else ApiResult.Failed(response.code())
+    } catch (e: IOException) {
+        // A transport failure is indistinguishable from a 5xx at the counter, and the agent has
+        // already recorded the failed request either way.
+        ApiResult.Failed(0)
+    }
+
+/**
  * The register's Astro Shop calls, and the cart key that keeps register carts apart from shopper
  * carts (bluebox-demo#18).
  *
@@ -26,9 +40,11 @@ sealed interface ApiResult<out T> {
  */
 class RegisterRepository(baseUrl: String = BuildConfig.ASTROSHOP_BASE_URL) {
 
-    private val api: AstroShopApi = Retrofit.Builder()
-        // Retrofit needs the trailing slash to resolve the relative paths in AstroShopApi.
-        .baseUrl(if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/")
+    // Retrofit needs the trailing slash to resolve the relative paths in AstroShopApi.
+    private val root = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+
+    private val retrofit: Retrofit = Retrofit.Builder()
+        .baseUrl(root)
         .client(
             OkHttpClient.Builder()
                 // A counter cannot wait on a hung catalog; the fault has to surface as a banner.
@@ -38,26 +54,41 @@ class RegisterRepository(baseUrl: String = BuildConfig.ASTROSHOP_BASE_URL) {
         )
         .addConverterFactory(GsonConverterFactory.create())
         .build()
-        .create(AstroShopApi::class.java)
+
+    private val api: AstroShopApi = retrofit.create(AstroShopApi::class.java)
+
+    /**
+     * Order pickup, against the API in bluebox-demo#50.
+     *
+     * The stub is a development stand-in for an API that did not exist yet, and it is the whole of
+     * the choice: delete the branch, the `PICKUP_STUB` field in `app/build.gradle.kts` and
+     * `StubPickupSource.kt`, and the register has only the real thing. A release build already does,
+     * because the flag defaults to false.
+     */
+    val pickup: PickupSource =
+        if (BuildConfig.PICKUP_STUB) StubPickupSource() else LivePickupSource(retrofit)
+
+    /** The shop assistant. Its own client: the assistant is slow where the catalog must not be. */
+    val assistant: AssistantClient = AssistantClient(root)
 
     /** The cart key for this cashier session, set at sign-in. */
     @Volatile
     var cartSessionId: String = ""
 
     suspend fun lookupProduct(productId: String): ApiResult<Product?> =
-        call { api.getProduct(productId, CURRENCY) }
+        apiCall { api.getProduct(productId, CURRENCY) }
 
     suspend fun addToCart(productId: String, quantity: Int): ApiResult<Unit?> =
-        call { api.addToCart(CURRENCY, AddToCartRequest(cartSessionId, CartItem(productId, quantity))) }
+        apiCall { api.addToCart(CURRENCY, AddToCartRequest(cartSessionId, CartItem(productId, quantity))) }
 
     suspend fun emptyCart(): ApiResult<Unit?> =
-        call { api.emptyCart(EmptyCartRequest(cartSessionId)) }
+        apiCall { api.emptyCart(EmptyCartRequest(cartSessionId)) }
 
     /**
      * Card or cash, the order goes to checkout with the store address and email and the house test
      * card, so payment runs and every sale produces a full backend trace.
      */
-    suspend fun checkout(): ApiResult<CheckoutResponse?> = call {
+    suspend fun checkout(): ApiResult<CheckoutResponse?> = apiCall {
         api.checkout(
             CURRENCY,
             CheckoutRequest(
@@ -80,16 +111,6 @@ class RegisterRepository(baseUrl: String = BuildConfig.ASTROSHOP_BASE_URL) {
             ),
         )
     }
-
-    private suspend fun <T> call(block: suspend () -> Response<T>): ApiResult<T?> =
-        try {
-            val response = block()
-            if (response.isSuccessful) ApiResult.Ok(response.body()) else ApiResult.Failed(response.code())
-        } catch (e: IOException) {
-            // A transport failure is indistinguishable from a 5xx at the counter, and the agent has
-            // already recorded the failed request either way.
-            ApiResult.Failed(0)
-        }
 
     private companion object {
         const val CURRENCY = "USD"
