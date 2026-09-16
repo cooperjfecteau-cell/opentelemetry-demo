@@ -1,0 +1,4 @@
+<resources>
+    <!-- Compose supplies the register's own theme; the platform theme only has to stay out of the way. -->
+    <style name="Theme.AstroShopRegister" parent="@android:style/Theme.Material.Light.NoActionBar" />
+</resources>
