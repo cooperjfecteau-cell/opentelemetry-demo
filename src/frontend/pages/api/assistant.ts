@@ -5,7 +5,7 @@ import type { NextApiHandler } from 'next';
 import { context, trace } from '@opentelemetry/api';
 import InstrumentationMiddleware from '../../utils/telemetry/InstrumentationMiddleware';
 
-type TResponse = { answer: string } | { error: string };
+type TResponse = { answer: string } | { error: string; detail?: string };
 
 // The assistant is the chart's `agent` component (it renames itself `shop-assistant` through
 // OTEL_SERVICE_NAME) and serves POST /prompt on agent:8010. It has no route through
@@ -80,9 +80,16 @@ const handler: NextApiHandler<TResponse> = async ({ method, body }, res) => {
       } catch (error) {
         span?.setAttribute('assistant.result', 'error');
         const timedOut = (error as Error)?.name === 'AbortError';
-        return res
-          .status(timedOut ? 504 : 502)
-          .json({ error: timedOut ? 'the assistant took too long to answer.' : 'the assistant could not be reached.' });
+        // The cause matters: "could not be reached" covers a DNS failure, a refused connection and
+        // a malformed reply alike, and a demo has no time to guess which. It goes on the span and
+        // into the body - this call never leaves the cluster's own network, so there is nothing
+        // here a cashier's tablet should not see.
+        const detail = `${(error as Error)?.name || 'Error'}: ${(error as Error)?.message || String(error)}`;
+        span?.setAttribute('assistant.error', detail);
+        return res.status(timedOut ? 504 : 502).json({
+          error: timedOut ? 'the assistant took too long to answer.' : 'the assistant could not be reached.',
+          detail,
+        });
       } finally {
         if (timer) clearTimeout(timer);
       }
