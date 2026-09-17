@@ -24,7 +24,12 @@ type TResponse = { answer: string } | { error: string; detail?: string };
 // frontend asks the agent. Node auto-instrumentation propagates traceparent on the way out and
 // the agent extracts it (it already does exactly that when the chatbot's instrumented client
 // calls it), so the whole assistant trace hangs off the register's own request.
-const AGENT_URL = `http://${process.env.AGENT_ENDPOINT || 'agent'}:${process.env.AGENT_PORT || '8010'}/prompt`;
+// ASSISTANT_ADDR, host:port in one variable, and deliberately not AGENT_HOST/AGENT_PORT:
+// Kubernetes injects Docker-link-style variables for every service in the namespace, so the
+// `agent` service already defines AGENT_PORT=tcp://10.100.176.67:8010 in this container. Reading
+// it built `http://agent:tcp://10.100.176.67:8010/prompt`, and fetch rejected the URL - which
+// surfaced as "the assistant could not be reached", the failure this route was written to avoid.
+const AGENT_URL = `http://${process.env.ASSISTANT_ADDR || 'agent:8010'}/prompt`;
 
 // The register gives up at 90s. Stop short of that so a slow model returns an error we chose
 // rather than a dead socket the cashier cannot read.
