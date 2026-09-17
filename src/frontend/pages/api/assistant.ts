@@ -35,6 +35,25 @@ const AGENT_URL = `http://${process.env.ASSISTANT_ADDR || 'agent:8010'}/prompt`;
 // rather than a dead socket the cashier cannot read.
 const AGENT_TIMEOUT_MS = Number(process.env.AGENT_TIMEOUT_MS || 75_000);
 
+/**
+ * The agent writes a message's content either as a plain string or as a list of typed parts, and
+ * which one depends on the model: Bedrock answers this demo with
+ * `[{type: "reasoning_content", ...}, {type: "text", text: "The price is $101.96."}]`.
+ *
+ * Only the text parts come back. The reasoning part is the model thinking aloud on its way to the
+ * answer - useful in a trace, wrong on a screen a customer can see over the cashier's shoulder,
+ * and it is in the trace either way.
+ */
+function textOf(content: unknown): string {
+  if (typeof content === 'string') return content.trim();
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter(part => part?.type === 'text' && typeof part?.text === 'string')
+    .map(part => part.text)
+    .join('\n\n')
+    .trim();
+}
+
 const handler: NextApiHandler<TResponse> = async ({ method, body }, res) => {
   switch (method) {
     case 'POST': {
@@ -72,7 +91,8 @@ const handler: NextApiHandler<TResponse> = async ({ method, body }, res) => {
         // { response: { messages: [ ..., { content } ] } } - the answer is the last message.
         const payload = await response.json();
         const messages = payload?.response?.messages;
-        const answer = Array.isArray(messages) ? messages[messages.length - 1]?.content : undefined;
+        const content = Array.isArray(messages) ? messages[messages.length - 1]?.content : undefined;
+        const answer = textOf(content);
 
         span?.setAttribute('assistant.response_time_ms', Date.now() - started);
         if (!answer) {
