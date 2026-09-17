@@ -555,12 +555,19 @@ class RegisterViewModel(
                 it.copy(assistant = it.assistant.copy(asking = true, answer = null, error = null))
             }
             // Measured here, so it is what the cashier waited: the whole round trip through
-            // frontend-proxy and the chatbot to the assistant, not the assistant's own span.
+            // frontend-proxy and the frontend to the assistant, not the assistant's own span.
             val startedAt = System.nanoTime()
-            val answer = repository.assistant.ask(question)
-            val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
             val cashier = _state.value.cashier.orEmpty()
             val productId = _state.value.assistant.productId
+            // The identity rides the request so the assistant's own spans carry store.id and
+            // register.id, the way the pickup API's do.
+            val answer = repository.assistant.ask(
+                question = question,
+                storeId = RegisterConfig.get().storeId,
+                registerId = RegisterConfig.get().registerId,
+                productId = productId,
+            )
+            val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
 
             when (answer) {
                 is AssistantAnswer.Ok -> {
