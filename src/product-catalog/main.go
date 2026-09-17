@@ -16,6 +16,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -385,8 +386,19 @@ func (p *productCatalog) ListProducts(ctx context.Context, req *pb.Empty) (*pb.L
 	return &pb.ListProductsResponse{Products: products}, nil
 }
 
-func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductRequest) (*pb.Product, error) {
+func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductRequest) (product *pb.Product, err error) {
 	span := trace.SpanFromContext(ctx)
+	defer func() {
+		if r := recover(); r != nil {
+			panicErr := fmt.Errorf("%v", r)
+			span.RecordError(panicErr, trace.WithStackTrace(true))
+			span.SetStatus(otelcodes.Error, "panic in GetProduct: "+panicErr.Error())
+			logger.ErrorContext(ctx, "panic in GetProduct "+req.Id+": "+panicErr.Error(),
+				slog.String("demo.product.id", req.Id),
+				slog.String("exception.stacktrace", string(debug.Stack())))
+			product, err = nil, status.Errorf(codes.Internal, "product catalog failed on %s: %v", req.Id, r)
+		}
+	}()
 	span.SetAttributes(
 		attribute.String("demo.product.id", req.Id),
 	)
@@ -408,10 +420,15 @@ func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductReque
 		return nil, status.Error(codes.NotFound, msg)
 	}
 
+	// Cross-sell: a product sits on its primary shelf, and we recommend the second category
+	// beside it at the counter.
+	relatedCategory := found.Categories[1]
+
 	span.AddEvent("Product Found")
 	span.SetAttributes(
 		attribute.String("demo.product.id", req.Id),
 		attribute.String("demo.product.name", found.Name),
+		attribute.String("demo.product.related_category", relatedCategory),
 	)
 
 	logger.LogAttrs(
