@@ -409,10 +409,14 @@ func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductReque
 	}
 
 	span.AddEvent("Product Found")
-	span.SetAttributes(
+	attrs := []attribute.KeyValue{
 		attribute.String("demo.product.id", req.Id),
 		attribute.String("demo.product.name", found.Name),
-	)
+	}
+	if relatedCategory := secondCategory(found.Categories); relatedCategory != "" {
+		attrs = append(attrs, attribute.String("demo.product.related_category", relatedCategory))
+	}
+	span.SetAttributes(attrs...)
 
 	logger.LogAttrs(
 		ctx,
@@ -422,6 +426,13 @@ func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductReque
 	)
 
 	return found, nil
+}
+
+func secondCategory(categories []string) string {
+	if len(categories) < 2 {
+		return ""
+	}
+	return categories[1]
 }
 
 func (p *productCatalog) SearchProducts(ctx context.Context, req *pb.SearchProductsRequest) (*pb.SearchProductsResponse, error) {
