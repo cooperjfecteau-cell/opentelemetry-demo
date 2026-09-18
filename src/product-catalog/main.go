@@ -16,7 +16,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -386,19 +385,8 @@ func (p *productCatalog) ListProducts(ctx context.Context, req *pb.Empty) (*pb.L
 	return &pb.ListProductsResponse{Products: products}, nil
 }
 
-func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductRequest) (product *pb.Product, err error) {
+func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductRequest) (*pb.Product, error) {
 	span := trace.SpanFromContext(ctx)
-	defer func() {
-		if r := recover(); r != nil {
-			panicErr := fmt.Errorf("%v", r)
-			span.RecordError(panicErr, trace.WithStackTrace(true))
-			span.SetStatus(otelcodes.Error, "panic in GetProduct: "+panicErr.Error())
-			logger.ErrorContext(ctx, "panic in GetProduct "+req.Id+": "+panicErr.Error(),
-				slog.String("demo.product.id", req.Id),
-				slog.String("exception.stacktrace", string(debug.Stack())))
-			product, err = nil, status.Errorf(codes.Internal, "product catalog failed on %s: %v", req.Id, r)
-		}
-	}()
 	span.SetAttributes(
 		attribute.String("demo.product.id", req.Id),
 	)
@@ -420,25 +408,11 @@ func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductReque
 		return nil, status.Error(codes.NotFound, msg)
 	}
 
-	// Cross-sell: a product sits on its primary shelf, and we recommend the second category
-	// beside it at the counter. Categories are ordered primary-first by the catalog loader,
-	// so the related shelf is the one after it - but half the catalogue carries a single
-	// category and has no second shelf to point at. Those products get no recommendation
-	// rather than taking the whole lookup down with them.
-	relatedCategory := ""
-	if len(found.Categories) > 1 {
-		relatedCategory = found.Categories[1]
-	}
-
 	span.AddEvent("Product Found")
-	attrs := []attribute.KeyValue{
+	span.SetAttributes(
 		attribute.String("demo.product.id", req.Id),
 		attribute.String("demo.product.name", found.Name),
-	}
-	if relatedCategory != "" {
-		attrs = append(attrs, attribute.String("demo.product.related_category", relatedCategory))
-	}
-	span.SetAttributes(attrs...)
+	)
 
 	logger.LogAttrs(
 		ctx,
