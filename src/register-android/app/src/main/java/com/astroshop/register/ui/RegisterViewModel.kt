@@ -579,6 +579,7 @@ class RegisterViewModel(
 
                 is AssistantAnswer.Failed -> {
                     RegisterFlow.assistantAsked(cashier, productId, elapsedMs, RegisterFlow.ASSISTANT_ERROR)
+                    RegisterRum.assistantFailed(productId, answer.detail)
                     _state.update {
                         it.copy(assistant = it.assistant.copy(asking = false, error = answer.detail))
                     }

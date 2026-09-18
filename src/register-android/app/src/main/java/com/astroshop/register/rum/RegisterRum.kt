@@ -90,9 +90,19 @@ object RegisterRum {
         // withScreenRecordOptedIn.
         Dynatrace.applyUserPrivacyOptions(privacyOptions)
 
+        // Custom, not Safe. Safe masks every piece of text and every image in the replay, which
+        // on this app means the item list, the prices, the running total, the receipt and the
+        // "Catalog unavailable" banner all render as grey blocks - a replay of a sale in which
+        // nothing visibly happens. The agent offers Safe, Safest and Custom; Custom masks only
+        // what the app marks, and the PIN block already carries Modifier.dtMask(), which is the
+        // one thing on screen that must never be readable.
+        //
+        // Nothing else here is personal: the products are a fixed catalogue, the prices are
+        // public, and the cashier id is pseudonymous and already a session property on every
+        // event. A replay a presenter cannot read is a replay nobody watches twice.
         DynatraceSessionReplay.setConfiguration(
             Configuration.builder()
-                .withMaskingConfiguration(MaskingConfiguration.Safe())
+                .withMaskingConfiguration(MaskingConfiguration.Custom())
                 .build()
         )
 
@@ -234,6 +244,9 @@ object RegisterRum {
      * as well as for a real catalog outage, so the automatic request events cannot tell a mistyped
      * id from the fault.
      */
+    /** `result` on a lookup failure that is the catalog's fault rather than a mistyped id. */
+    private const val RESULT_ERROR = "error"
+
     fun lookupFailed(productId: String, result: String, statusCode: Int) {
         Dynatrace.sendEvent(
             EventData()
@@ -242,5 +255,28 @@ object RegisterRum {
                 .addEventProperty(EVENT + "result", result)
                 .addEventProperty(EVENT + "status_code", statusCode)
         )
+        // A failed request is not an error as far as the agent is concerned - it records the call
+        // and its status code, and "Analyze errors" on the mobile app stays empty because that
+        // view shows crashes, ANRs and errors the app reports itself. So the register reports it.
+        //
+        // Only `error`. A mistyped product id also comes back 500 from Astro Shop, and calling a
+        // cashier's typo an application error would bury the outage it is meant to surface.
+        if (result == RESULT_ERROR) {
+            Dynatrace.reportError("Catalog lookup failed: $productId", statusCode)
+        }
     }
+
+    /**
+     * The assistant failing is the other thing a cashier sees and the agent does not call an error:
+     * the call itself may have returned cleanly while the answer never arrived.
+     */
+    fun assistantFailed(productId: String, detail: String) {
+        // The agent takes a code or a Throwable, not a message string. The detail here is the
+        // sentence the cashier was shown, so it travels as the exception's message and reaches
+        // the error view intact.
+        Dynatrace.reportError("Assistant unavailable: $productId", AssistantFailure(detail))
+    }
+
+    /** Carries the reason a cashier saw, so the reported error says why rather than just what. */
+    private class AssistantFailure(message: String) : Exception(message)
 }
