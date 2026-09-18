@@ -83,6 +83,42 @@ class Agent:
     async def handle_prompt(self, request: ChatRequest):
         return await self.run_agent(request.message, request.history)
 
+    @staticmethod
+    def _catalog_breaker(tools):
+        """Stop calling a catalog that has already failed, for the rest of this request.
+
+        When the catalog is down the agent does not give up after the first failure: it
+        re-reasons and tries again, and each retry is another gRPC call into a service that is
+        already returning 500s. Measured during the 2026-09-18 incident, a conversation that
+        ended in failure made 3.6 model calls against 2.6 for one that worked, and every one of
+        those extra turns put more load on the thing that was down.
+
+        The breaker is per request, so a catalog that recovers between conversations is tried
+        again immediately - it is not a circuit breaker with a timer, and deliberately so: the
+        blast radius it is protecting against is one doomed conversation, not the service.
+
+        This does not decide what #12 asks: whether a finished answer should still be thrown
+        away as a 502. It stops the retries costing the shop anything while that is decided.
+        """
+        state = {"failed": None}
+
+        def guard(fn):
+            async def wrapped(*args, **kwargs):
+                if state["failed"] is not None:
+                    return state["failed"]
+                result = await fn(*args, **kwargs)
+                # The tools signal an unreachable shop with a string starting "Error"; an
+                # unknown product id answers with the valid ids instead, and is not a failure.
+                if isinstance(result, str) and result.startswith("Error"):
+                    state["failed"] = result
+                return result
+
+            wrapped.__name__ = fn.__name__
+            wrapped.__doc__ = fn.__doc__
+            return wrapped
+
+        return [guard(t) if t.__name__ in CATALOG_TOOLS else t for t in tools]
+
     async def get_tool_list(self, grounded: bool = True):
         mcp_enabled = os.getenv("MCP_ENABLED", "False") == "True"
         if mcp_enabled and self.mcp_server is not None:
@@ -100,7 +136,7 @@ class Agent:
                 get_supported_currencies,
                 list_products,
             ]
-            tools = [tool(t) for t in tool_list]
+            tools = [tool(t) for t in self._catalog_breaker(tool_list)]
         if grounded:
             return tools
         return [t for t in tools if t.name not in CATALOG_TOOLS]
