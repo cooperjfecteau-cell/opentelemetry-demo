@@ -4,12 +4,36 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import logging
 import os
 
 import httpx
 
 BASE_URL = os.getenv("APPLICATION_ENDPOINT", "localhost:8080")
 TIMEOUT = httpx.Timeout(10.0)
+
+log = logging.getLogger("tools")
+
+
+def unavailable(subject: str, exc: Exception, guidance: str) -> str:
+    """What the model is told when the shop cannot answer.
+
+    Under two constraints. It has to start with "Error", because agents._failed_tool keys on
+    that prefix to decide the request failed. And it is read by a model that will paraphrase it
+    to a shopper, so it says what to do next rather than what broke: passing the raw httpx text
+    through put "Server error '500 Internal Server Error' for url 'http://frontend:8080/...'"
+    into answers customers read, internal hostname and all.
+
+    The technical detail is not lost, it is logged - where it is correlated to the trace and can
+    be read in Dynatrace, rather than paraphrased by a language model.
+    """
+    log.warning("%s unavailable: %s", subject, exc)
+    return f"Error: {subject} is unavailable right now. {guidance}"
+
+
+NO_SERVER_TALK = (
+    "Do not mention servers, errors, status codes or outages to the customer."
+)
 
 
 async def get_ads(category: str):
@@ -23,7 +47,7 @@ async def get_ads(category: str):
             res.raise_for_status()
             return res.json()
     except Exception as e:
-        return f"Error fetching ads: {e}"
+        return unavailable("promotions", e, "Answer without mentioning promotions. " + NO_SERVER_TALK)
 
 
 async def add_to_cart(user_id: str, product_id: str, quantity: int = 1):
@@ -55,7 +79,11 @@ async def get_cart(user_id: str):
             res.raise_for_status()
             return res.json()
     except Exception as e:
-        return f"Error while fetching cart: {e}"
+        return unavailable(
+            "the shopping cart",
+            e,
+            "Tell the customer you cannot read their cart at the moment. " + NO_SERVER_TALK,
+        )
 
 
 async def empty_cart(user_id: str):
@@ -82,7 +110,12 @@ async def list_products():
             res.raise_for_status()
             return res.json()
     except Exception as e:
-        return f"Error while fetching product list: {e}"
+        return unavailable(
+            "the product catalogue",
+            e,
+            "Tell the customer you cannot browse the catalogue at the moment and ask them to "
+            "try again shortly. Do not name products or prices from memory. " + NO_SERVER_TALK,
+        )
 
 
 async def get_product(product_id: str):
@@ -93,7 +126,7 @@ async def get_product(product_id: str):
     # only a shop that cannot answer at all is reported as an error.
     catalog = await list_products()
     if isinstance(catalog, str):
-        return f"Error while fetching product {product_id}: {catalog}"
+        return catalog
     known = {p.get("id") for p in catalog if isinstance(p, dict)}
     if product_id not in known:
         names = ", ".join(f"{p['id']} ({p.get('name')})" for p in catalog if isinstance(p, dict))[:1500]
@@ -105,7 +138,17 @@ async def get_product(product_id: str):
             res.raise_for_status()
             return res.json()
     except Exception as e:
-        return f"Error while fetching product {product_id}: {e}"
+        # The product is in the catalogue listing, so the model is holding its name and price
+        # already and will happily recommend it from that. During the 2026-09-18 catalog
+        # incident it recommended the Starsense Explorer, at the right price, while that exact
+        # product was the one returning 500s. Say plainly that it is off the table.
+        return unavailable(
+            f"details for product {product_id}",
+            e,
+            "Do not recommend this product and do not quote its price, even if an earlier "
+            "product list gave you one. Tell the customer this item is temporarily "
+            "unavailable and offer a different product instead. " + NO_SERVER_TALK,
+        )
 
 
 async def checkout(checkout_person):
@@ -141,7 +184,11 @@ async def get_supported_currencies():
             res.raise_for_status()
             return res.json()
     except Exception as e:
-        return f"Error while fetching currency list: {e}"
+        return unavailable(
+            "the currency list",
+            e,
+            "Answer in US dollars and do not offer a currency change. " + NO_SERVER_TALK,
+        )
 
 
 async def get_recommendations(product_id: str):
@@ -154,7 +201,11 @@ async def get_recommendations(product_id: str):
             res.raise_for_status()
             return res.json()
     except Exception as e:
-        return f"Error fetching recommendations: {e}"
+        return unavailable(
+            "recommendations",
+            e,
+            "Answer from the product catalogue instead of recommending related items. " + NO_SERVER_TALK,
+        )
 
 
 async def get_shipping_quote(items, currency_code, address):
@@ -191,4 +242,9 @@ async def get_shipping_quote(items, currency_code, address):
                 return f"Shipping quote failed with HTTP {res.status_code}: {body}. "
             return res.json()
     except Exception as e:
-        return f"Error fetching shipping quote: {e}"
+        return unavailable(
+            "a shipping quote",
+            e,
+            "Tell the customer shipping cannot be quoted right now and that they can still "
+            "continue. " + NO_SERVER_TALK,
+        )

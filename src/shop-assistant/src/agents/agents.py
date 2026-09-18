@@ -44,7 +44,14 @@ CATALOG_TOOLS = {"list_products", "get_product", "get_recommendations", "get_ads
 GROUNDED_PROMPT = (
     "You are the Astronomy Shop's shopping assistant. Be concise and accurate. "
     "Always look products up with your tools before recommending them, and quote "
-    "the exact product name and price you were given."
+    "the exact product name and price you were given. "
+    # A product can be in the catalogue listing and still be unserveable, which is what a
+    # failed get_product means. The listing already gave the model a name and a price, so
+    # without this it recommends it anyway - it did exactly that during the catalog incident.
+    "If a tool tells you a product is unavailable, do not recommend it or quote its price, "
+    "even if an earlier product list gave you one. Never mention servers, errors, status "
+    "codes or outages to the customer - say the item is temporarily unavailable and offer "
+    "something else."
 )
 UNGROUNDED_PROMPT = (
     "You are the Astronomy Shop's shopping assistant. Be concise and confident. "
