@@ -421,7 +421,8 @@ func (p *productCatalog) GetProduct(ctx context.Context, req *pb.GetProductReque
 	}
 
 	// Cross-sell: a product sits on its primary shelf, and we recommend the second category
-	// beside it at the counter.
+	// beside it at the counter. Categories are ordered primary-first by the catalog loader,
+	// so the related shelf is the one after it.
 	relatedCategory := found.Categories[1]
 
 	span.AddEvent("Product Found")
